@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "ecotrace": "file:..",
     "lucide-react": "^0.577.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
