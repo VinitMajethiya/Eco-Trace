@@ -25,8 +25,9 @@ function cleanJSONString(str) {
  */
 async function generateRecommendation(userFirstName, statsContext) {
   const apiKey = process.env.GEMINI_API_KEY;
+  const isKeyConfigured = apiKey && apiKey !== 'your-gemini-api-key-here';
   
-  if (!apiKey) {
+  if (!isKeyConfigured) {
     console.log('No GEMINI_API_KEY found. Using rule-based fallback recommendation.');
     return generateFallbackRecommendation(statsContext);
   }

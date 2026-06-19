@@ -16,7 +16,9 @@ async function generateWeeklySummary(userName, currentEmissions, prevEmissions, 
     }
   };
 
-  if (!apiKey) {
+  const isKeyConfigured = apiKey && apiKey !== 'your-gemini-api-key-here';
+
+  if (!isKeyConfigured) {
     console.log('No GEMINI_API_KEY found. Using rule-based fallback weekly summary.');
     return getFallbackText();
   }

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "EcoTrace - Personal Carbon Footprint Tracker & Reduction Coach",
   "scripts": {
-    "install-all": "npm install --prefix server && npm install --prefix client",
+    "install-all": "npm install --prefix server && npm install --prefix client --legacy-peer-deps",
     "migrate": "npm run migrate --prefix server",
     "seed": "npm run seed --prefix server",
     "test-server": "npm run test --prefix server",

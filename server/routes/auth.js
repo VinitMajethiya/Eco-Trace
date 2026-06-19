@@ -9,7 +9,13 @@ const { JWT_SECRET } = require('../middleware/auth');
 
 const router = express.Router();
 
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+const isGoogleOAuthConfigured = 
+  process.env.GOOGLE_CLIENT_ID && 
+  process.env.GOOGLE_CLIENT_ID !== 'your-google-oauth-client-id-here' &&
+  process.env.GOOGLE_CLIENT_SECRET && 
+  process.env.GOOGLE_CLIENT_SECRET !== 'your-google-oauth-client-secret-here';
+
+if (isGoogleOAuthConfigured) {
   passport.use(new GoogleStrategy({
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -256,13 +262,13 @@ router.delete('/account', authenticateToken, (req, res) => {
 // GET /api/auth/config - check which features (like Google OAuth) are enabled
 router.get('/config', (req, res) => {
   res.json({
-    googleOAuthEnabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+    googleOAuthEnabled: !!isGoogleOAuthConfigured
   });
 });
 
 // GET /api/auth/google - trigger google login
 router.get('/google', (req, res, next) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  if (!isGoogleOAuthConfigured) {
     return res.status(400).json({ error: 'Google OAuth is not configured on this server.' });
   }
   const clientOrigin = req.query.origin || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -276,7 +282,7 @@ router.get('/google', (req, res, next) => {
 
 // GET /api/auth/google/callback - callback endpoint for google oauth redirection
 router.get('/google/callback', (req, res, next) => {
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  if (!isGoogleOAuthConfigured) {
     return res.status(400).json({ error: 'Google OAuth is not configured on this server.' });
   }
 
