@@ -1,0 +1,180 @@
+{
+  "transport": {
+    "car_petrol": {
+      "factor": 0.192,
+      "unit": "km",
+      "source": "DEFRA/IPCC avg petrol car"
+    },
+    "car_diesel": {
+      "factor": 0.171,
+      "unit": "km",
+      "source": "DEFRA/IPCC avg diesel car"
+    },
+    "bus": {
+      "factor": 0.105,
+      "unit": "km",
+      "source": "DEFRA avg local bus"
+    },
+    "train": {
+      "factor": 0.041,
+      "unit": "km",
+      "source": "DEFRA national rail avg"
+    },
+    "flight_domestic": {
+      "factor": 0.246,
+      "unit": "km",
+      "source": "DEFRA domestic flight avg"
+    },
+    "two_wheeler": {
+      "factor": 0.103,
+      "unit": "km",
+      "source": "IPCC avg motorcycle/scooter"
+    },
+    "bicycle_walk": {
+      "factor": 0,
+      "unit": "km",
+      "source": "Zero direct emissions"
+    },
+    "cng_car": {
+      "factor": 0.144,
+      "unit": "km",
+      "source": "IPCC/average CNG car"
+    },
+    "auto_rickshaw": {
+      "factor": 0.08,
+      "unit": "km",
+      "source": "India Auto-rickshaw average"
+    },
+    "cab": {
+      "factor": 0.192,
+      "unit": "km",
+      "source": "Average cab/taxi ride (petrol)"
+    },
+    "commute_car_petrol": {
+      "factor": 0.192,
+      "unit": "km",
+      "source": "India specific Petrol Car"
+    },
+    "commute_bike_petrol": {
+      "factor": 0.103,
+      "unit": "km",
+      "source": "India specific Two Wheeler"
+    },
+    "commute_auto": {
+      "factor": 0.08,
+      "unit": "km",
+      "source": "India Auto-rickshaw average"
+    },
+    "commute_metro": {
+      "factor": 0.015,
+      "unit": "km",
+      "source": "India Metro/Local Train average"
+    },
+    "commute_bus": {
+      "factor": 0.105,
+      "unit": "km",
+      "source": "India City Bus average"
+    },
+    "commute_cng_car": {
+      "factor": 0.144,
+      "unit": "km",
+      "source": "India specific CNG Car"
+    },
+    "commute_cab": {
+      "factor": 0.192,
+      "unit": "km",
+      "source": "India specific Cab / Taxi"
+    }
+  },
+  "energy": {
+    "electricity_grid": {
+      "factor": 0.71,
+      "unit": "kWh",
+      "source": "India CEA grid emission factor avg"
+    },
+    "lpg_cooking": {
+      "factor": 2.98,
+      "unit": "kg",
+      "source": "IPCC LPG combustion factor"
+    },
+    "electricity_home": {
+      "factor": 0.71,
+      "unit": "kWh",
+      "source": "India Home grid average"
+    },
+    "lpg_cylinder": {
+      "factor": 42.3,
+      "unit": "cylinder",
+      "source": "India 14.2kg LPG cylinder"
+    }
+  },
+  "food": {
+    "beef_meal": {
+      "factor": 6.0,
+      "unit": "meal",
+      "source": "Poore & Nemecek (2018) avg"
+    },
+    "chicken_meal": {
+      "factor": 1.5,
+      "unit": "meal",
+      "source": "Poore & Nemecek (2018) avg"
+    },
+    "vegetarian_meal": {
+      "factor": 0.5,
+      "unit": "meal",
+      "source": "Poore & Nemecek (2018) avg"
+    },
+    "vegan_meal": {
+      "factor": 0.3,
+      "unit": "meal",
+      "source": "Poore & Nemecek (2018) avg"
+    },
+    "meal_veg": {
+      "factor": 0.5,
+      "unit": "meal",
+      "source": "Indian vegetarian meal average"
+    },
+    "meal_egg": {
+      "factor": 0.8,
+      "unit": "meal",
+      "source": "Indian egg/dairy meal average"
+    },
+    "meal_chicken": {
+      "factor": 1.5,
+      "unit": "meal",
+      "source": "Indian chicken meal average"
+    },
+    "meal_beef_mutton": {
+      "factor": 6.0,
+      "unit": "meal",
+      "source": "Indian mutton/beef meal average"
+    }
+  },
+  "consumption": {
+    "fast_fashion_item": {
+      "factor": 8.0,
+      "unit": "item",
+      "source": "WRAP/industry avg garment lifecycle"
+    },
+    "electronics_item": {
+      "factor": 70.0,
+      "unit": "item",
+      "source": "Industry avg manufacturing footprint"
+    },
+    "general_waste_kg": {
+      "factor": 0.45,
+      "unit": "kg",
+      "source": "EPA landfill avg"
+    },
+    "online_shopping": {
+      "factor": 1.5,
+      "unit": "order",
+      "source": "Indian e-commerce delivery average"
+    },
+    "general_waste": {
+      "factor": 0.45,
+      "unit": "kg",
+      "source": "Indian household waste landfill average"
+    }
+  }
+}

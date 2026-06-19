@@ -1,0 +1,8 @@
+node_modules/
+server/.env
+server/ecotrace.db
+server/ecotrace.db-journal
+client/dist/
+.DS_Store
+*.log
+server/scratch/
