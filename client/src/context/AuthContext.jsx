@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiFetch } from '../lib/apiClient';
 
 const AuthContext = createContext(null);
 
@@ -11,7 +12,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkUserSession = async () => {
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await apiFetch('/api/auth/me');
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);
@@ -29,7 +30,7 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -55,7 +56,7 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/register', {
+      const response = await apiFetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password, household_size: householdSize })
@@ -80,7 +81,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     setLoading(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await apiFetch('/api/auth/logout', { method: 'POST' });
       setUser(null);
     } catch (err) {
       console.error('Logout error:', err);
@@ -92,7 +93,7 @@ export const AuthProvider = ({ children }) => {
   const completeOnboarding = async (commuteMode, diet, householdSize, city) => {
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/onboarding', {
+      const response = await apiFetch('/api/auth/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,7 +127,7 @@ export const AuthProvider = ({ children }) => {
   const deleteAccount = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/account', { method: 'DELETE' });
+      const response = await apiFetch('/api/auth/account', { method: 'DELETE' });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to delete account');

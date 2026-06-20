@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Target, Award, RefreshCw, Zap } from 'lucide-react';
+import { apiFetch } from '../lib/apiClient';
 
 export default function RecommendationCard({ planData, onCommitSuccess, onRefresh, loading }) {
   const [committingId, setCommittingId] = useState(null);
@@ -10,7 +11,7 @@ export default function RecommendationCard({ planData, onCommitSuccess, onRefres
     setCommittingId(actionId);
     setError('');
     try {
-      const response = await fetch('/api/recommendations/commit', {
+      const response = await apiFetch('/api/recommendations/commit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action_item_id: actionId })

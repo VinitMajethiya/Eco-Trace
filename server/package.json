@@ -16,6 +16,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "ecotrace": "file:..",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
     "helmet": "^8.2.0",
@@ -24,6 +25,7 @@
     "node-cron": "^4.4.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
+    "pg": "^8.11.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

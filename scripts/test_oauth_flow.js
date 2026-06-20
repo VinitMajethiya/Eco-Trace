@@ -14,38 +14,43 @@ passport.authenticate = function(strategy, options, callback) {
       emails: [{ value: 'google_test@example.com' }]
     };
 
-    // We can lookup or run the strategy verification function,
-    // or just simulate the callback with a resolved user in the database.
-    // Let's create the user in the database first to match strategy output.
     const db = require('../db/database');
-    
-    // Ensure table recreation and fields exist
     const runMigrations = require('../db/migrationRunner');
-    runMigrations();
+    
+    async function handleAuth() {
+      await runMigrations();
 
-    // Check if user already exists
-    let user = db.prepare('SELECT * FROM users WHERE email = ?').get('google_test@example.com');
-    if (!user) {
-      const result = db.prepare(`
-        INSERT INTO users (name, email, password_hash, oauth_provider, oauth_id)
-        VALUES (?, ?, ?, ?, ?)
-      `).run('Google Test User', 'google_test@example.com', null, 'google', 'google-oauth-id-999');
-      user = {
-        id: result.lastInsertRowid,
-        name: 'Google Test User',
-        email: 'google_test@example.com',
-        password_hash: null,
-        oauth_provider: 'google',
-        oauth_id: 'google-oauth-id-999'
-      };
+      // Clear database first
+      await db.query('TRUNCATE TABLE users, activities, recommendations, action_items, commitments, weekly_summaries RESTART IDENTITY CASCADE');
+
+      // Check if user already exists
+      const userResult = await db.query('SELECT * FROM users WHERE email = $1', ['google_test@example.com']);
+      let user = userResult.rows[0];
+      if (!user) {
+        const result = await db.query(`
+          INSERT INTO users (name, email, password_hash, oauth_provider, oauth_id)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING id
+        `, ['Google Test User', 'google_test@example.com', null, 'google', 'google-oauth-id-999']);
+        user = {
+          id: result.rows[0].id,
+          name: 'Google Test User',
+          email: 'google_test@example.com',
+          password_hash: null,
+          oauth_provider: 'google',
+          oauth_id: 'google-oauth-id-999'
+        };
+      }
+
+      if (callback) {
+        callback(null, user);
+      } else {
+        req.user = user;
+        next();
+      }
     }
 
-    if (callback) {
-      callback(null, user);
-    } else {
-      req.user = user;
-      next();
-    }
+    handleAuth().catch(next);
   };
 };
 
@@ -75,7 +80,8 @@ async function testOAuthFlow() {
   }
 
   // Verify user database state
-  const user = db.prepare("SELECT * FROM users WHERE email = ?").get('google_test@example.com');
+  const userResult = await db.query("SELECT * FROM users WHERE email = $1", ['google_test@example.com']);
+  const user = userResult.rows[0];
   console.log('\nDatabase Row created for OAuth user:');
   console.log(JSON.stringify(user, null, 2));
 
@@ -85,7 +91,7 @@ async function testOAuthFlow() {
     console.error('✗ ERROR: User database row is incorrect!');
   }
 
-  db.close();
+  await db.close();
 }
 
-testOAuthFlow();
+testOAuthFlow().catch(console.error);

@@ -4,19 +4,20 @@ const factors = require('../data/emissionFactors.json');
 /**
  * Helper to get user activities over a date range.
  */
-function getUserActivities(userId, startDate, endDate) {
-  return db.prepare(`
+async function getUserActivities(userId, startDate, endDate) {
+  const result = await db.query(`
     SELECT category, sub_type, quantity, co2e_kg, activity_date 
     FROM activities 
-    WHERE user_id = ? AND activity_date BETWEEN ? AND ?
-  `).all(userId, startDate, endDate);
+    WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
+  `, [userId, startDate, endDate]);
+  return result.rows;
 }
 
 /**
  * Computes category totals and top contributor for a given period.
  */
-function getPeriodStats(userId, startDate, endDate) {
-  const activities = getUserActivities(userId, startDate, endDate);
+async function getPeriodStats(userId, startDate, endDate) {
+  const activities = await getUserActivities(userId, startDate, endDate);
   
   if (activities.length === 0) {
     return null;
@@ -239,21 +240,22 @@ function generateWhatIfOptions(topCategory, topSubType, userActivities) {
 /**
  * Checks trigger conditions T1, T2, T3, T4.
  */
-function shouldTriggerNewRecommendation(userId, forceRefresh = false) {
+async function shouldTriggerNewRecommendation(userId, forceRefresh = false) {
   if (forceRefresh) return true;
 
   // Check activity count (T1 requires >= 5 total logs)
-  const activityCountRow = db.prepare('SELECT COUNT(*) as count FROM activities WHERE user_id = ?').get(userId);
-  const totalLogs = activityCountRow ? activityCountRow.count : 0;
+  const activityCountRow = await db.query('SELECT COUNT(*) as count FROM activities WHERE user_id = $1', [userId]);
+  const totalLogs = activityCountRow.rows[0] ? parseInt(activityCountRow.rows[0].count) : 0;
   if (totalLogs < 5) return false;
 
   // Get most recent recommendation
-  const lastRec = db.prepare(`
+  const lastRecRow = await db.query(`
     SELECT top_category, generated_at, is_stale
     FROM recommendations 
-    WHERE user_id = ? 
+    WHERE user_id = $1 
     ORDER BY generated_at DESC LIMIT 1
-  `).get(userId);
+  `, [userId]);
+  const lastRec = lastRecRow.rows[0];
 
   // If no recommendation exists yet, trigger it (T1)
   if (!lastRec) return true;
@@ -269,7 +271,7 @@ function shouldTriggerNewRecommendation(userId, forceRefresh = false) {
   const todayStr = now.toISOString().split('T')[0];
 
   // Get current top category
-  const stats = getPeriodStats(userId, startOfMonth, todayStr);
+  const stats = await getPeriodStats(userId, startOfMonth, todayStr);
   if (!stats) return false;
 
   // T2: Top category differs from last recommendation

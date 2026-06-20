@@ -1,43 +1,54 @@
-# Database Schema (SQLite)
+# Database Schema (PostgreSQL)
 
-Single-file SQLite database (`ecotrace.db`, excluded from version control via `.gitignore`; created/seeded via `npm run migrate` / `npm run seed`).
+EcoTrace uses a PostgreSQL database (configured locally via Docker Compose, and hosted on Render managed PostgreSQL in production).
 
 ## 1. Entity Relationship Overview
 
 ```
 users (1) ──── (many) activities
 users (1) ──── (many) recommendations
+users (1) ──── (many) weekly_summaries
 recommendations (1) ──── (many) action_items
 action_items (1) ──── (0/1) commitments
-commitments (1) ──── (many) activities  [logical link via category+date range, see §6]
+commitments (1) ──── (many) activities  [logical link via category+date range]
 ```
 
 ## 2. Table: `users`
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
-| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | |
-| `name` | TEXT | NOT NULL | First name only stored/used in LLM prompts |
-| `email` | TEXT | NOT NULL, UNIQUE | |
-| `password_hash` | TEXT | NOT NULL | bcrypt hash, never plaintext |
+| `id` | SERIAL | PRIMARY KEY | |
+| `name` | VARCHAR(100) | NOT NULL | First name used in LLM prompts |
+| `email` | VARCHAR(255) | NOT NULL, UNIQUE | |
+| `password_hash` | VARCHAR(255) | NULLABLE | bcrypt hash (nullable to support Google OAuth) |
 | `household_size` | INTEGER | DEFAULT 1 | Used to contextualize benchmark comparisons |
-| `default_commute_mode` | TEXT | NULLABLE | Set during onboarding |
-| `default_diet` | TEXT | NULLABLE | omnivore / vegetarian / vegan / other |
-| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | ISO8601 |
+| `default_commute_mode` | VARCHAR(50) | NULLABLE | Set during onboarding |
+| `default_diet` | VARCHAR(50) | NULLABLE | omnivore / vegetarian / vegan / other |
+| `oauth_provider` | VARCHAR(50) | NULLABLE | Google, GitHub, etc. |
+| `oauth_id` | VARCHAR(255) | NULLABLE | Provider user ID |
+| `city` | VARCHAR(100) | NULLABLE | User location |
+| `current_streak` | INTEGER | DEFAULT 0 | Consecutive days logging activities |
+| `longest_streak` | INTEGER | DEFAULT 0 | Max consecutive logging days |
+| `last_log_date` | DATE | NULLABLE | Date of user's last log |
+| `created_at` | TIMESTAMP WITH TIME ZONE | DEFAULT CURRENT_TIMESTAMP | |
+
+**Constraint:** Unique index on `(oauth_provider, oauth_id)` to handle social authentication logins.
 
 ## 3. Table: `activities`
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
-| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | |
-| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | |
-| `category` | TEXT | NOT NULL, CHECK IN ('transport','energy','food','consumption') | Enum-restricted |
-| `sub_type` | TEXT | NOT NULL | e.g., 'car_petrol', 'bus', 'flight_domestic', 'electricity_grid', 'beef_meal' — must match a key in `emissionFactors.json` |
-| `quantity` | REAL | NOT NULL, CHECK (quantity > 0 AND quantity < 100000) | Bounded to reject absurd input |
-| `unit` | TEXT | NOT NULL | 'km', 'kWh', 'meal', 'item', etc. |
-| `co2e_kg` | REAL | NOT NULL | Computed server-side at insert time, never client-supplied |
-| `activity_date` | TEXT | NOT NULL | ISO8601 date (the date the activity occurred, not logged) |
-| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | |
+| `id` | SERIAL | PRIMARY KEY | |
+| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | Cascade delete on user removal |
+| `category` | VARCHAR(50) | NOT NULL, CHECK IN ('transport','energy','food','consumption') | Enum-restricted |
+| `sub_type` | VARCHAR(100) | NOT NULL | e.g. 'car_petrol', 'electricity_grid', 'beef_meal' |
+| `quantity` | DOUBLE PRECISION | NOT NULL, CHECK (quantity > 0 AND quantity < 100000) | Bounded |
+| `unit` | VARCHAR(50) | NOT NULL | 'km', 'kWh', 'meal', 'item', etc. |
+| `co2e_kg` | DOUBLE PRECISION | NOT NULL | Computed server-side at insert time |
+| `activity_date` | DATE | NOT NULL | Date the activity occurred |
+| `is_recurring` | INTEGER | DEFAULT 0 | Binary flag (0 = one-time, 1 = recurring log) |
+| `recurring_days` | VARCHAR(50) | NULLABLE | Comma-separated list of day indices (e.g. '1,3,5') |
+| `created_at` | TIMESTAMP WITH TIME ZONE | DEFAULT CURRENT_TIMESTAMP | |
 
 **Index:** `(user_id, activity_date)` — supports fast date-range aggregation for dashboard queries.
 **Index:** `(user_id, category)` — supports category breakdown queries.
@@ -46,40 +57,53 @@ commitments (1) ──── (many) activities  [logical link via category+date 
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
-| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | |
-| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | |
-| `top_category` | TEXT | NOT NULL | Snapshot of category that triggered this recommendation |
-| `top_category_share_pct` | REAL | NOT NULL | e.g., 52.3 |
-| `summary_text` | TEXT | NOT NULL | LLM-generated (or fallback-template-generated) encouraging summary |
-| `source` | TEXT | NOT NULL, CHECK IN ('llm','fallback') | Transparency: was this AI-generated or rule-fallback |
-| `generated_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Used for the "7 days passed" regeneration trigger |
+| `id` | SERIAL | PRIMARY KEY | |
+| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | Cascade delete |
+| `top_category` | VARCHAR(50) | NOT NULL | Snapshot of category triggering recommendation |
+| `top_category_share_pct` | DOUBLE PRECISION | NOT NULL | e.g. 52.3 |
+| `summary_text` | TEXT | NOT NULL | AI-generated summary |
+| `source` | VARCHAR(50) | NOT NULL, CHECK IN ('llm','fallback') | Was this AI or fallback template |
+| `is_stale` | INTEGER | DEFAULT 0 | 1 if newer activity invalidates recommendation |
+| `generated_at` | TIMESTAMP WITH TIME ZONE | DEFAULT CURRENT_TIMESTAMP | Regeneration check |
 
 ## 5. Table: `action_items`
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
-| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | |
-| `recommendation_id` | INTEGER | NOT NULL, FOREIGN KEY → recommendations.id | |
+| `id` | SERIAL | PRIMARY KEY | |
+| `recommendation_id` | INTEGER | NOT NULL, FOREIGN KEY → recommendations.id | Cascade delete |
 | `rank` | INTEGER | NOT NULL | 1–3, display order |
-| `action_text` | TEXT | NOT NULL | e.g., "Take transit 2x this week instead of driving" |
-| `estimated_saving_kg` | REAL | NOT NULL | **Recalculated/validated server-side**, not trusted raw from LLM output |
-| `target_category` | TEXT | NOT NULL | Used to match future activities for adherence tracking |
+| `action_text` | TEXT | NOT NULL | suggestion details |
+| `estimated_saving_kg` | DOUBLE PRECISION | NOT NULL | Recalculated server-side |
+| `target_category` | VARCHAR(50) | NOT NULL | Used to track commitments |
 
 ## 6. Table: `commitments`
 
 | Column | Type | Constraints | Notes |
 |---|---|---|---|
-| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | |
-| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | |
-| `action_item_id` | INTEGER | NOT NULL, FOREIGN KEY → action_items.id | |
-| `start_date` | TEXT | NOT NULL | |
-| `end_date` | TEXT | NOT NULL | Default start_date + 7 days |
-| `status` | TEXT | NOT NULL, CHECK IN ('active','success','partial','missed'), DEFAULT 'active' | Evaluated at end_date |
-| `baseline_co2e_kg` | REAL | NOT NULL | Snapshot of relevant-category footprint at commitment start, for delta comparison |
+| `id` | SERIAL | PRIMARY KEY | |
+| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | Cascade delete |
+| `action_item_id` | INTEGER | NOT NULL, FOREIGN KEY → action_items.id | Cascade delete |
+| `start_date` | DATE | NOT NULL | Commitment start |
+| `end_date` | DATE | NOT NULL | Commitment end (usually start + 7 days) |
+| `status` | VARCHAR(50) | DEFAULT 'active', CHECK IN ('active','success','partial','missed') | Evaluated at end_date |
+| `baseline_co2e_kg` | DOUBLE PRECISION | NOT NULL | Baseline emissions |
 
-## 7. Reference Data (Not a DB Table — Versioned JSON File)
+## 7. Table: `weekly_summaries`
 
-`server/data/emissionFactors.json` — a small, version-controlled, human-readable file (not a database table) since it's reference/config data, not user data. Kept out of SQLite intentionally so it can be reviewed/cited directly in `rules.md` and in the "Why this number?" UI.
+| Column | Type | Constraints | Notes |
+|---|---|---|---|
+| `id` | SERIAL | PRIMARY KEY | |
+| `user_id` | INTEGER | NOT NULL, FOREIGN KEY → users.id | Cascade delete |
+| `week_start_date` | DATE | NOT NULL | Monday of the week |
+| `summary_text` | TEXT | NOT NULL | Cache of LLM generated summary |
+| `created_at` | TIMESTAMP WITH TIME ZONE | DEFAULT CURRENT_TIMESTAMP | |
+
+**Constraint:** Unique constraint on `(user_id, week_start_date)` to act as the cache key.
+
+## 8. Reference Data (Not a DB Table — Versioned JSON File)
+
+`server/data/emissionFactors.json` — version-controlled reference data.
 
 ```json
 {
@@ -109,9 +133,3 @@ commitments (1) ──── (many) activities  [logical link via category+date 
   }
 }
 ```
-
-*Note: All factors are illustrative averages compiled from publicly cited methodologies (DEFRA, IPCC, EPA, Poore & Nemecek 2018) — see `rules.md` §1 for full citation list and the explicit assumption that these are averages, not precise individual measurements.*
-
-## 8. Data Retention / Privacy Notes
-- No third-party tracking/analytics tables.
-- Email is the only PII stored beyond name; never sent to the LLM API (only first name + aggregated numeric context is sent — see TechSpec §4).

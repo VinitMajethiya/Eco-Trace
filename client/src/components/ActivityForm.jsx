@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Bike, Zap, Utensils, ShoppingBag, ArrowLeft, ArrowRight, Save } from 'lucide-react';
+import { apiFetch } from '../lib/apiClient';
 
 // Module-level cache: fetched once per browser session from the server
 // This ensures the live preview always matches the server calculation
@@ -9,7 +10,7 @@ let factorsFetchPromise = null;
 async function getFactors() {
   if (cachedFactors) return cachedFactors;
   if (factorsFetchPromise) return factorsFetchPromise;
-  factorsFetchPromise = fetch('/api/reference/emission-factors')
+  factorsFetchPromise = apiFetch('/api/reference/emission-factors')
     .then(res => {
       if (!res.ok) throw new Error('Failed to retrieve factors');
       return res.json();
@@ -205,7 +206,7 @@ export default function ActivityForm({ isOpen, onClose, onSuccess, initialDefaul
     setError('');
 
     try {
-      const response = await fetch('/api/activities', {
+      const response = await apiFetch('/api/activities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

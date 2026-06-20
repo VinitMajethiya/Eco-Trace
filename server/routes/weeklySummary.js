@@ -49,15 +49,13 @@ router.get('/', async (req, res) => {
     const { startCurrent, endCurrent, startPrevious, endPrevious } = getWeeklyRanges();
     const weekStartDate = startCurrent; // Fixed ISO Monday (YYYY-MM-DD)
     
-    // Note: Stale sliding-window cache rows from pre-fix code are harmlessly left to age out naturally.
-
-
     // 1. Check database cache first
-    const cached = db.prepare(`
+    const cachedResult = await db.query(`
       SELECT summary_text 
       FROM weekly_summaries 
-      WHERE user_id = ? AND week_start_date = ?
-    `).get(req.user.id, weekStartDate);
+      WHERE user_id = $1 AND week_start_date = $2
+    `, [req.user.id, weekStartDate]);
+    const cached = cachedResult.rows[0];
 
     if (cached) {
       return res.json({
@@ -68,16 +66,18 @@ router.get('/', async (req, res) => {
     }
 
     // 2. Fetch user name
-    const userRow = db.prepare('SELECT name FROM users WHERE id = ?').get(req.user.id);
+    const userResult = await db.query('SELECT name FROM users WHERE id = $1', [req.user.id]);
+    const userRow = userResult.rows[0];
     const userName = userRow ? userRow.name : 'EcoTracer';
 
     // 3. Aggregate current week emissions
-    const currentActivities = db.prepare(`
-      SELECT category, COALESCE(SUM(co2e_kg), 0) as total
+    const currentActivitiesResult = await db.query(`
+      SELECT category, CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
       FROM activities
-      WHERE user_id = ? AND activity_date BETWEEN ? AND ?
+      WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
       GROUP BY category
-    `).all(req.user.id, startCurrent, endCurrent);
+    `, [req.user.id, startCurrent, endCurrent]);
+    const currentActivities = currentActivitiesResult.rows;
 
     let currentTotal = 0;
     const categoryBreakdown = { transport: 0, energy: 0, food: 0, consumption: 0 };
@@ -87,11 +87,12 @@ router.get('/', async (req, res) => {
     });
 
     // 4. Aggregate previous week emissions
-    const prevSumRow = db.prepare(`
-      SELECT COALESCE(SUM(co2e_kg), 0) as total
+    const prevSumResult = await db.query(`
+      SELECT CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
       FROM activities
-      WHERE user_id = ? AND activity_date BETWEEN ? AND ?
-    `).get(req.user.id, startPrevious, endPrevious);
+      WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
+    `, [req.user.id, startPrevious, endPrevious]);
+    const prevSumRow = prevSumResult.rows[0];
     
     const prevTotal = prevSumRow ? prevSumRow.total : 0;
 
@@ -112,11 +113,11 @@ router.get('/', async (req, res) => {
 
     // 6. Cache in the database
     try {
-      db.prepare(`
+      await db.query(`
         INSERT INTO weekly_summaries (user_id, week_start_date, summary_text)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id, week_start_date) DO UPDATE SET summary_text = excluded.summary_text
-      `).run(req.user.id, weekStartDate, summaryText);
+        VALUES ($1, $2, $3)
+        ON CONFLICT(user_id, week_start_date) DO UPDATE SET summary_text = EXCLUDED.summary_text
+      `, [req.user.id, weekStartDate, summaryText]);
     } catch (err) {
       console.warn('Failed to cache weekly summary in DB:', err.message);
     }
@@ -136,4 +137,3 @@ router.get('/', async (req, res) => {
 router.getISOWeekMonday = getISOWeekMonday;
 router.getWeeklyRanges = getWeeklyRanges;
 module.exports = router;
-

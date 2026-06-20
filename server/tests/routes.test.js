@@ -11,15 +11,17 @@ describe('API Routing Integration Tests', () => {
   let userId;
   let testActivityId;
 
-  beforeAll(() => {
-    // Force NODE_ENV to test (it causes database.js to connect to :memory:)
+  beforeAll(async () => {
+    // Force NODE_ENV to test
     process.env.NODE_ENV = 'test';
     // Run migrations
-    runMigrations();
+    await runMigrations();
+    // Truncate tables to ensure a clean slate
+    await db.query('TRUNCATE TABLE users, activities, recommendations, action_items, commitments, weekly_summaries RESTART IDENTITY CASCADE');
   });
 
-  afterAll(() => {
-    db.close();
+  afterAll(async () => {
+    await db.close();
   });
 
   test('POST /api/auth/register - success', async () => {
@@ -66,11 +68,11 @@ describe('API Routing Integration Tests', () => {
   });
 
   test('POST /api/auth/login - fails closed for OAuth-only user (null password_hash)', async () => {
-    // Insert an OAuth-only user directly into the in-memory database
-    db.prepare(`
+    // Insert an OAuth-only user directly into the database
+    await db.query(`
       INSERT INTO users (name, email, password_hash, oauth_provider, oauth_id)
-      VALUES (?, ?, ?, ?, ?)
-    `).run('Google User', 'googleuser@test.com', null, 'google', 'google-id-123');
+      VALUES ($1, $2, $3, $4, $5)
+    `, ['Google User', 'googleuser@test.com', null, 'google', 'google-id-123']);
 
     // Attempt to log in via credentials
     const res = await request(app)

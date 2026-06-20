@@ -2,8 +2,8 @@
  * Migration 003 — Add performance indexes
  * Adds indexes on recommendations and commitments for coaching query performance.
  */
-function up(db) {
-  db.exec(`
+async function up(db) {
+  await db.query(`
     CREATE INDEX IF NOT EXISTS idx_recommendations_user
     ON recommendations (user_id, generated_at DESC);
 

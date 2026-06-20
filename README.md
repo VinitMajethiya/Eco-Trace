@@ -49,7 +49,7 @@ It combines a **deterministic backend calculation engine** with a **contextual A
 
 - **Frontend**: React (Vite) + Plain CSS (CSS Variables, Flexbox/Grid) + Recharts + Lucide Icons.
 - **Backend**: Node.js + Express + Zod (Validation) + JWT (HttpOnly Cookie Sessions) + express-rate-limit.
-- **Database**: SQLite (`better-sqlite3`) for robust zero-config local storage.
+- **Database**: PostgreSQL (managed hosted DB on Render in production; local containerized DB via Docker Compose in development).
 - **AI Core**: Google Gemini 1.5 Flash API (server-side calls only, never exposed to client).
 
 ---
@@ -71,31 +71,39 @@ EcoTrace uses population average conversion factors sourced from official greenh
 ### Prerequisites
 - Node.js (v18+)
 - npm
+- Docker Desktop (or local PostgreSQL instance running on port 5432)
 
-### Installation
+### Installation & Database Setup
 1. Clone this repository and navigate to the project root:
    ```bash
    cd Carbon-Footprint
    ```
-2. Install dependencies for both server and client folders:
+2. Start the local PostgreSQL instance via Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+3. Install dependencies for both server and client folders:
    ```bash
    npm run install-all
    ```
-
-### Configuration
-1. Create a `.env` file in the `server` directory (you can copy `server/.env.example`):
+4. Create a `.env` file in the `server` directory (copying `server/.env.example`):
    ```bash
    cp server/.env.example server/.env
    ```
-2. Set the `GEMINI_API_KEY` in `server/.env` to enable AI coach generation. If left empty, the application will automatically fall back to the rule-based recommendation template.
+5. Apply migration schema to your local database:
+   ```bash
+   npm run migrate --prefix server
+   ```
+6. Seed the database with 30 days of mock history:
+   ```bash
+   npm run seed --prefix server
+   ```
 
-### Database Setup
-Initialize tables and seed the database with 30 days of mock commuting, energy, and meal history:
-```bash
-npm run seed
-```
+*Default Seed Credentials*:
+- Email: `aman@ecotrace.com`
+- Password: `password123`
 
-### Running the Application
+### Running the Application Locally
 Open two separate terminal windows:
 
 - **Terminal 1 (Backend API)**:
@@ -108,11 +116,7 @@ Open two separate terminal windows:
   ```bash
   npm run dev-client
   ```
-  Runs the dev server on `http://localhost:5173`. Open this URL in your browser to view the application.
-
-*Default Seed Credentials*:
-- Email: `aman@ecotrace.com`
-- Password: `password123`
+  Runs the dev server on `http://localhost:5173`. Open this URL in your browser.
 
 ---
 
@@ -122,13 +126,21 @@ To run the server test suite:
 ```bash
 npm run test-server
 ```
+*Note: The test suite runs sequential database assertions using `--runInBand` and `--detectOpenHandles` to avoid state conflicts/deadlocks on the shared test database container.*
 
 ---
 
-## 🛠️ Development Utility Scripts
+## 🚀 Production Deployment (Vercel & Render)
 
-The `scripts/` directory at the root level contains manual testing and verification utilities:
-- `api_audit.js`: Automatically triggers backend endpoint requests and validates calculation/percentage mapping correctness.
-- `test_fallback.js`: Verifies fallback templates execution under sandbox constraints.
-- `test_rec_flow.js`: Exercises the raw recommendation orchestrator pipeline.
-These are development tools and are not required to run the core production application.
+EcoTrace is architected to run as two independent services communicating cross-origin:
+
+### 1. Frontend (Vercel)
+- Hosted as a static React SPA.
+- Routing redirects are handled via `client/vercel.json` to prevent 404s on page refresh.
+- Setup environment variable: `VITE_API_URL` pointing to your Render backend API URL.
+
+### 2. Backend API & DB (Render)
+- **Web Service**: Hosted as a Node.js web service.
+- **Database**: Spin up a managed Render PostgreSQL database, and set `DATABASE_URL` in the web service environment variables.
+- Set `CLIENT_ORIGIN` pointing to your Vercel frontend URL.
+- Authentication cookies are automatically configured with `sameSite: 'none'` and `secure: true` in production, allowing safe cross-origin credential verification.

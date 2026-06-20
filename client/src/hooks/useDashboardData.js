@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { apiFetch } from '../lib/apiClient';
 
 const LOGS_PER_PAGE = 10;
 
@@ -28,8 +29,8 @@ export default function useDashboardData({ defaults, refreshTrigger, setRefreshT
       setError('');
       try {
         const [dashRes, actRes] = await Promise.all([
-          fetch(`/api/dashboard/summary?range=${range}`),
-          fetch(`/api/activities?page=${currentPage}&limit=${LOGS_PER_PAGE}`)
+          apiFetch(`/api/dashboard/summary?range=${range}`),
+          apiFetch(`/api/activities?page=${currentPage}&limit=${LOGS_PER_PAGE}`)
         ]);
 
         if (!dashRes.ok || !actRes.ok) {
@@ -63,7 +64,7 @@ export default function useDashboardData({ defaults, refreshTrigger, setRefreshT
 
   const handleDeleteActivity = async (id) => {
     try {
-      const response = await fetch(`/api/activities/${id}`, { method: 'DELETE' });
+      const response = await apiFetch(`/api/activities/${id}`, { method: 'DELETE' });
       if (!response.ok) {
         throw new Error('Failed to delete activity');
       }
@@ -76,7 +77,7 @@ export default function useDashboardData({ defaults, refreshTrigger, setRefreshT
   const handleUpdateCity = async (newCity) => {
     setIsUpdatingCity(true);
     try {
-      const response = await fetch('/api/auth/onboarding', {
+      const response = await apiFetch('/api/auth/onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

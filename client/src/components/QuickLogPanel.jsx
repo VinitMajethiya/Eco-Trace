@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowRight, Check, Zap, Bike, Utensils, ShoppingBag } from 'lucide-react';
 import { INDIAN_ESTIMATES, COST_PROXIES } from '../data/indianEstimates';
+import { apiFetch } from '../lib/apiClient';
 
 const CATEGORY_ICONS = {
   transport: Bike,
@@ -30,7 +31,7 @@ export default function QuickLogPanel({ isOpen, onClose, onSuccess, onOpenDetail
   // Fetch today's logs on open
   const fetchTodayLogs = async () => {
     try {
-      const response = await fetch(`/api/activities?start_date=${todayStr}&end_date=${todayStr}&limit=100`);
+      const response = await apiFetch(`/api/activities?start_date=${todayStr}&end_date=${todayStr}&limit=100`);
       if (response.ok) {
         const data = await response.json();
         setTodayLogs(data.activities || []);
@@ -99,7 +100,7 @@ export default function QuickLogPanel({ isOpen, onClose, onSuccess, onOpenDetail
     setError('');
 
     try {
-      const response = await fetch('/api/activities', {
+      const response = await apiFetch('/api/activities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

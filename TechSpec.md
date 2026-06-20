@@ -6,7 +6,7 @@
 |---|---|---|
 | Frontend | React (Vite), plain CSS (CSS variables, no heavy UI framework) | Fast build, small bundle, full control over accessibility |
 | Backend | Node.js + Express | Lightweight, no build step, easy to reason about |
-| Database | SQLite (single file, via `better-sqlite3`) | Zero-config, file-based, keeps repo/runtime under size limits, no external DB server needed |
+| Database | PostgreSQL (local via Docker Compose, or hosted via Render Postgres) | Robust, transactional, non-ephemeral storage that persists across server redeploys and restarts |
 | AI Layer | LLM API (Gemini 1.5 Flash *or* OpenAI gpt-4o-mini, free/low-cost tier) called server-side only | Used strictly for natural-language coaching on top of pre-computed numbers — never for arithmetic |
 | Auth | Simple email + password, hashed (bcrypt), JWT session cookie | Single-user accounts only, no third-party OAuth needed for v1 |
 | Charts | `recharts` (React) | Small, accessible, SVG-based |
@@ -29,7 +29,7 @@
                                   ┌───────────────────┼───────────────────┐
                                   ▼                                       ▼
                           ┌───────────────┐                     ┌──────────────────┐
-                          │ SQLite (file)  │                     │ LLM API (external) │
+                          │ PostgreSQL DB │                     │ LLM API (external) │
                           │ users, logs,   │                     │ called ONLY with   │
                           │ recommendations│                     │ pre-computed stats │
                           └───────────────┘                     └──────────────────┘
@@ -72,12 +72,12 @@ The LLM **never** receives raw free text from the user and **never** performs th
 ## 5. Security Considerations
 
 - Passwords hashed with bcrypt (cost factor 12), never stored/logged in plaintext.
-- JWT stored as `httpOnly`, `secure`, `sameSite=strict` cookie — not accessible to client JS (XSS mitigation).
-- All inputs validated server-side (`zod` or `express-validator`) — category/sub-type restricted to enum allowlist, quantities bounded (no negative/absurd values).
+- JWT stored as `httpOnly` cookie. In development, it uses `sameSite=lax`/`strict`. In production, to support the separate Vercel/Render deployment origins, it uses `sameSite=none` and `secure=true`. Cross-origin reads are blocked by restricting backend CORS to a single exact `CLIENT_ORIGIN`.
+- All inputs validated server-side (`zod`) — category/sub-type restricted to enum allowlist, quantities bounded (no negative/absurd values).
 - Rate limiting on auth routes (`express-rate-limit`) to deter brute force.
 - LLM API key never exposed client-side; all third-party calls proxied through backend.
-- SQL injection mitigated by using parameterized queries exclusively (`better-sqlite3` prepared statements).
-- `.env` and `*.db` files included in `.gitignore` — no secrets or user data committed to the repo.
+- SQL injection mitigated by using parameterized queries exclusively (`pg` prepared statements like `$1, $2`).
+- `.env` file included in `.gitignore` — no secrets or user data committed to the repo.
 - CORS restricted to the deployed frontend origin only.
 
 ## 6. Repo Size & Submission Constraints
@@ -90,13 +90,25 @@ The LLM **never** receives raw free text from the user and **never** performs th
 
 ## 7. Local Setup (for evaluators)
 
+Ensure you have Docker Desktop running, or access to a PostgreSQL instance.
+
 ```bash
 git clone <repo-url>
 cd ecotrace
+
+# 1. Start the PostgreSQL container
+docker-compose up -d
+
+# 2. Set up environments & install dependencies
 npm install --prefix server
 npm install --prefix client
-cp server/.env.example server/.env   # add LLM_API_KEY (optional — app works without it via fallback)
-npm run seed --prefix server          # optional demo data
+cp server/.env.example server/.env   # configures DB URLs, JWT secret, etc.
+
+# 3. Run database migrations & seed demo data
+npm run migrate --prefix server
+npm run seed --prefix server
+
+# 4. Start servers in development mode
 npm run dev --prefix server           # starts API on :5000
 npm run dev --prefix client           # starts Vite dev server on :5173
 ```
@@ -106,5 +118,20 @@ npm run dev --prefix client           # starts Vite dev server on :5173
 - **Unit tests (Jest)**: Calculation Engine — verify CO2e math for every category/sub-type against known factor values; edge cases (zero, max bounds, missing factor).
 - **Unit tests**: Recommendation Orchestrator's fallback template logic (LLM-independent path).
 - **Integration tests**: API routes via `supertest` — auth flow, activity CRUD, dashboard aggregation correctness.
-- **Frontend tests (RTL)**: form validation, dashboard renders correct totals given mock API data, accessibility roles present.
+- **Sequential Execution**: Tests are run sequentially via `npm run test-server --prefix server` (alias for `jest --runInBand --detectOpenHandles`) to avoid database state deadlocks.
 - **Manual accessibility pass**: keyboard-only navigation, screen reader labels, axe-core automated scan.
+
+## 9. Production Deployment
+
+EcoTrace is designed to be deployed as two decoupled components:
+
+### A. Frontend (Vercel)
+- **Routing**: Single Page Application redirects are managed via `client/vercel.json` rewriting all non-asset routes to `index.html`.
+- **API Wiring**: Client fetch requests use a centralized `apiFetch` wrapper (`client/src/lib/apiClient.js`) that automatically prepends `import.meta.env.VITE_API_URL` and appends `credentials: 'include'` to supply session cookies cross-origin.
+
+### B. Backend (Render)
+- **Database**: Managed PostgreSQL instance in Render. Ephemeral filesystem does not impact the application.
+- **CORS Config**: CORS is locked to the specific deployed Vercel frontend origin (`CLIENT_ORIGIN`).
+- **Auth Cookies**: Express session cookie configured with `sameSite: 'none'` and `secure: true` to support cross-origin cookie sharing over HTTPS.
+- **OAuth Callback**: Google Cloud console redirects set to `GOOGLE_CALLBACK_URL` on Render's domain.
+

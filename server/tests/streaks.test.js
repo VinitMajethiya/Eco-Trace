@@ -12,26 +12,30 @@ describe('User Streak Logic', () => {
   let userId;
   let token;
 
-  beforeAll(() => {
-    runMigrations();
+  beforeAll(async () => {
+    await runMigrations();
+
+    // Clear tables
+    await db.query('TRUNCATE TABLE users, activities, recommendations, action_items, commitments, weekly_summaries RESTART IDENTITY CASCADE');
 
     // Create user
-    const userRes = db.prepare(`
+    const userRes = await db.query(`
       INSERT INTO users (name, email, password_hash)
-      VALUES (?, ?, ?)
-    `).run('StreakUser', 'streak@test.com', 'hash');
-    userId = userRes.lastInsertRowid;
+      VALUES ($1, $2, $3)
+      RETURNING id
+    `, ['StreakUser', 'streak@test.com', 'hash']);
+    userId = userRes.rows[0].id;
 
     token = jwt.sign({ id: userId, email: 'streak@test.com', name: 'StreakUser' }, JWT_SECRET);
   });
 
-  beforeEach(() => {
-    db.prepare('DELETE FROM activities').run();
-    db.prepare('UPDATE users SET current_streak = 0, longest_streak = 0, last_log_date = NULL WHERE id = ?').run(userId);
+  beforeEach(async () => {
+    await db.query('DELETE FROM activities');
+    await db.query('UPDATE users SET current_streak = 0, longest_streak = 0, last_log_date = NULL WHERE id = $1', [userId]);
   });
 
-  afterAll(() => {
-    db.close();
+  afterAll(async () => {
+    await db.close();
   });
 
   test('current_streak increments on consecutive daily logs and updates longest_streak', async () => {

@@ -8,7 +8,7 @@ const runMigrations = require('../db/migrationRunner');
 
 async function testRateLimiter() {
   console.log('--- TESTING AUTH RATE LIMITER ---');
-  runMigrations();
+  await runMigrations();
 
   const maxAttempts = 18;
   console.log(`Making ${maxAttempts} consecutive POST /api/auth/login requests...`);
@@ -37,7 +37,7 @@ async function testRateLimiter() {
     console.error('✗ ERROR: Rate limiting did not trigger within 18 attempts!');
   }
 
-  db.close();
+  await db.close();
 }
 
-testRateLimiter();
+testRateLimiter().catch(console.error);

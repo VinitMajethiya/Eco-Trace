@@ -61,38 +61,41 @@ function getPeriodRanges(range) {
 }
 
 // GET /api/dashboard/summary
-router.get('/summary', (req, res) => {
+router.get('/summary', async (req, res) => {
   try {
     const range = req.query.range === 'week' ? 'week' : 'month';
     const { startCurrent, endCurrent, startPrevious, endPrevious } = getPeriodRanges(range);
 
-    // 1. Fetch current user context (fail-safe: city/streak columns may not exist before migration 004)
+    // 1. Fetch current user context
     let user = { household_size: 1, city: null, current_streak: 0, longest_streak: 0 };
     try {
-      const fullUser = db.prepare('SELECT household_size, city, current_streak, longest_streak FROM users WHERE id = ?').get(req.user.id);
+      const fullUserResult = await db.query('SELECT household_size, city, current_streak, longest_streak FROM users WHERE id = $1', [req.user.id]);
+      const fullUser = fullUserResult.rows[0];
       if (fullUser) user = fullUser;
     } catch (_) {
-      // Pre-migration: columns may not exist yet
-      const basicUser = db.prepare('SELECT household_size FROM users WHERE id = ?').get(req.user.id);
+      // Pre-migration fallback: columns may not exist yet
+      const basicUserResult = await db.query('SELECT household_size FROM users WHERE id = $1', [req.user.id]);
+      const basicUser = basicUserResult.rows[0];
       if (basicUser) user.household_size = basicUser.household_size;
     }
     const householdSize = user.household_size || 1;
 
     // 2. Aggregate current period emissions
-    const currentActivities = db.prepare(`
-      SELECT category, COALESCE(SUM(co2e_kg), 0) as total
+    const currentActivitiesResult = await db.query(`
+      SELECT category, CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
       FROM activities
-      WHERE user_id = ? AND activity_date BETWEEN ? AND ?
+      WHERE user_id = $1 AND activity_date BETWEEN $2::date AND $3::date
       GROUP BY category
-    `).all(req.user.id, startCurrent, endCurrent);
+    `, [req.user.id, startCurrent, endCurrent]);
+    const currentActivities = currentActivitiesResult.rows;
 
     // 3. Aggregate previous period emissions (for delta calculations)
-    const prevSumRow = db.prepare(`
-      SELECT COALESCE(SUM(co2e_kg), 0) as total
+    const prevSumResult = await db.query(`
+      SELECT CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
       FROM activities
-      WHERE user_id = ? AND activity_date BETWEEN ? AND ?
-    `).get(req.user.id, startPrevious, endPrevious);
-    
+      WHERE user_id = $1 AND activity_date BETWEEN $2::date AND $3::date
+    `, [req.user.id, startPrevious, endPrevious]);
+    const prevSumRow = prevSumResult.rows[0];
     const prevTotal = prevSumRow ? prevSumRow.total : 0;
 
     // Build category map and compute current total
@@ -122,8 +125,7 @@ router.get('/summary', (req, res) => {
       deltaPercentage = parseFloat((((currentTotal - prevTotal) / prevTotal) * 100).toFixed(1));
     }
 
-    // 4. Optimized trend: single GROUP BY query replacing 8 individual queries (Phase 2.5)
-    // Calculate the 8-week window: from 8 complete weeks ago (Monday) to last Sunday
+    // 4. Optimized trend: 8-week window
     const today = new Date();
     const day = today.getDay();
     const diffToMonday = day === 0 ? -6 : 1 - day;
@@ -141,23 +143,20 @@ router.get('/summary', (req, res) => {
     const trendStartStr = trendStart.toISOString().split('T')[0];
     const trendEndStr = trendEnd.toISOString().split('T')[0];
 
-    // Single aggregated query
-    const trendRows = db.prepare(`
+    // Single aggregated query in PostgreSQL using to_char for week grouping
+    const trendResult = await db.query(`
       SELECT
-        strftime('%Y-%W', activity_date) as week_key,
-        SUM(co2e_kg) as total,
-        MIN(activity_date) as week_start
+        to_char(activity_date, 'IYYY-IW') as week_key,
+        CAST(SUM(co2e_kg) AS DOUBLE PRECISION) as total,
+        to_char(MIN(activity_date), 'YYYY-MM-DD') as week_start
       FROM activities
-      WHERE user_id = ?
-        AND activity_date >= ?
-        AND activity_date <= ?
+      WHERE user_id = $1
+        AND activity_date >= $2::date
+        AND activity_date <= $3::date
       GROUP BY week_key
       ORDER BY week_key ASC
-    `).all(req.user.id, trendStartStr, trendEndStr);
-
-    // Build a map for fast lookup
-    const trendMap = {};
-    trendRows.forEach(r => { trendMap[r.week_key] = r; });
+    `, [req.user.id, trendStartStr, trendEndStr]);
+    const trendRows = trendResult.rows;
 
     // Fill all 8 week buckets, using 0 for missing weeks
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -168,17 +167,6 @@ router.get('/summary', (req, res) => {
       bucketStart.setDate(currentMonday.getDate() - (i * 7));
       bucketStart.setHours(0, 0, 0, 0);
 
-      // Compute the ISO week key SQLite will produce for this date
-      const y = bucketStart.getFullYear();
-      const m = String(bucketStart.getMonth() + 1).padStart(2, '0');
-      const d = String(bucketStart.getDate()).padStart(2, '0');
-      const dayOfWeek = bucketStart.getDay() || 7; // Mon=1..Sun=7
-      const thursdayOfWeek = new Date(bucketStart);
-      thursdayOfWeek.setDate(bucketStart.getDate() + (4 - dayOfWeek));
-      const yearStart = new Date(thursdayOfWeek.getFullYear(), 0, 1);
-      const weekNum = Math.ceil(((thursdayOfWeek - yearStart) / 86400000 + 1) / 7);
-      // SQLite uses %W (0-based Sunday-first), so we use the actual date string key approach:
-      // Simpler: use the bucketStart date string to look up in trendMap by matching week_start >= bucketStart and < bucketStart+7
       const bucketEnd = new Date(bucketStart);
       bucketEnd.setDate(bucketStart.getDate() + 6);
       const bucketStartStr = `${bucketStart.getFullYear()}-${String(bucketStart.getMonth()+1).padStart(2,'0')}-${String(bucketStart.getDate()).padStart(2,'0')}`;

@@ -10,6 +10,7 @@ import OnboardingForm from './components/OnboardingForm';
 import QuickLogPanel from './components/QuickLogPanel';
 import WeeklySummaryCard from './components/WeeklySummaryCard';
 import { CheckCircle } from 'lucide-react';
+import { apiFetch } from './lib/apiClient';
 
 function AppContent() {
   const { user, loading, login, register, logout, completeOnboarding, deleteAccount, isAuthenticated } = useAuth();
@@ -57,7 +58,7 @@ function AppContent() {
     if (isAuthenticated && user?.default_commute_mode) {
       setTimeout(() => setIsCoachLoading(true), 0);
       // Fetch plan
-      fetch('/api/recommendations')
+      apiFetch('/api/recommendations')
         .then(res => res.json())
         .then(data => {
           setPlanData(data);
@@ -69,7 +70,7 @@ function AppContent() {
         });
 
       // Fetch commitments
-      fetch('/api/recommendations/commitments')
+      apiFetch('/api/recommendations/commitments')
         .then(res => res.json())
         .then(data => setCommitments(data))
         .catch(err => console.error('Error fetching commitments:', err));
@@ -94,7 +95,7 @@ function AppContent() {
   const handleCoachRefresh = async () => {
     setIsCoachLoading(true);
     try {
-      const res = await fetch('/api/recommendations?refresh=true');
+      const res = await apiFetch('/api/recommendations?refresh=true');
       const data = await res.json();
       setPlanData(data);
       showToast('Coach recommendations updated.');

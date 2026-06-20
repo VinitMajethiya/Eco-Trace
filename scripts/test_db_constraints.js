@@ -1,31 +1,38 @@
 const db = require('../db/database');
 const runMigrations = require('../db/migrationRunner');
 
-function testConstraints() {
+async function testConstraints() {
   process.env.NODE_ENV = 'test';
-  runMigrations();
+  await runMigrations();
 
   console.log('--- TESTING UNIQUE EMAIL CONSTRAINT DIRECTLY ON DB ---');
 
+  // Truncate tables first
+  await db.query('TRUNCATE TABLE users, activities, recommendations, action_items, commitments, weekly_summaries RESTART IDENTITY CASCADE');
+
   // Insert first user
-  db.prepare(`
-    INSERT INTO users (name, email, password_hash)
-    VALUES (?, ?, ?)
-  `).run('User1', 'test@example.com', 'hash1');
-  console.log('Inserted first user successfully.');
+  try {
+    await db.query(`
+      INSERT INTO users (name, email, password_hash)
+      VALUES ($1, $2, $3)
+    `, ['User1', 'test@example.com', 'hash1']);
+    console.log('Inserted first user successfully.');
+  } catch (err) {
+    console.error('Failed to insert first user:', err.message);
+  }
 
   // Try inserting second user with same email
   try {
-    db.prepare(`
+    await db.query(`
       INSERT INTO users (name, email, password_hash)
-      VALUES (?, ?, ?)
-    `).run('User2', 'test@example.com', 'hash2');
+      VALUES ($1, $2, $3)
+    `, ['User2', 'test@example.com', 'hash2']);
     console.error('✗ ERROR: Duplicate email was accepted!');
   } catch (err) {
     console.log('✓ Success: Duplicate email rejected as expected!', err.message);
   }
 
-  db.close();
+  await db.close();
 }
 
-testConstraints();
+testConstraints().catch(console.error);

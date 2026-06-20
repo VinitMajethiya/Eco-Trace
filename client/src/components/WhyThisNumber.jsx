@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Info, X } from 'lucide-react';
+import { apiFetch } from '../lib/apiClient';
 
 // Module-level factors cache
 let cachedFactors = null;
@@ -8,7 +9,7 @@ let factorsFetchPromise = null;
 async function getFactors() {
   if (cachedFactors) return cachedFactors;
   if (factorsFetchPromise) return factorsFetchPromise;
-  factorsFetchPromise = fetch('/api/reference/emission-factors')
+  factorsFetchPromise = apiFetch('/api/reference/emission-factors')
     .then(res => res.json())
     .then(data => {
       cachedFactors = data;

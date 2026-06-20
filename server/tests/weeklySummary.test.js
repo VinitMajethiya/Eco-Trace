@@ -13,26 +13,30 @@ describe('Weekly Summary Caching and ISO Week boundaries', () => {
   let userId;
   let token;
 
-  beforeAll(() => {
-    runMigrations();
+  beforeAll(async () => {
+    await runMigrations();
+
+    // Clear tables
+    await db.query('TRUNCATE TABLE users, activities, recommendations, action_items, commitments, weekly_summaries RESTART IDENTITY CASCADE');
 
     // Create a test user
-    const userRes = db.prepare(`
+    const userRes = await db.query(`
       INSERT INTO users (name, email, password_hash)
-      VALUES (?, ?, ?)
-    `).run('SummaryUser', 'summary@test.com', 'hash');
-    userId = userRes.lastInsertRowid;
+      VALUES ($1, $2, $3)
+      RETURNING id
+    `, ['SummaryUser', 'summary@test.com', 'hash']);
+    userId = userRes.rows[0].id;
 
     token = jwt.sign({ id: userId, email: 'summary@test.com', name: 'SummaryUser' }, JWT_SECRET);
   });
 
-  afterAll(() => {
-    db.close();
+  afterAll(async () => {
+    await db.close();
   });
 
-  beforeEach(() => {
-    db.prepare('DELETE FROM weekly_summaries').run();
-    db.prepare('DELETE FROM activities').run();
+  beforeEach(async () => {
+    await db.query('DELETE FROM weekly_summaries');
+    await db.query('DELETE FROM activities');
     jest.useRealTimers();
   });
 
@@ -56,7 +60,6 @@ describe('Weekly Summary Caching and ISO Week boundaries', () => {
     expect(formatDate(wednesday)).toBe('2026-06-15');
     expect(formatDate(sunday)).toBe('2026-06-15');
     expect(formatDate(nextMonday)).toBe('2026-06-22');
-
   });
 
   test('getWeeklyRanges calculates correct current and previous ISO week ranges', () => {
@@ -70,7 +73,17 @@ describe('Weekly Summary Caching and ISO Week boundaries', () => {
   });
 
   test('API Endpoint uses the fixed ISO Monday as cache key and caches correctly', async () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({
+      doNotFake: [
+        'nextTick',
+        'setImmediate',
+        'clearImmediate',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval'
+      ]
+    });
     
     // Set system time to Wednesday 2026-06-17
     jest.setSystemTime(new Date('2026-06-17'));
@@ -104,7 +117,8 @@ describe('Weekly Summary Caching and ISO Week boundaries', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
     // Verify row added to DB
-    const dbRow = db.prepare('SELECT * FROM weekly_summaries WHERE user_id = ?').get(userId);
+    const dbRowResult = await db.query('SELECT * FROM weekly_summaries WHERE user_id = $1', [userId]);
+    const dbRow = dbRowResult.rows[0];
     expect(dbRow.week_start_date).toBe('2026-06-15');
     expect(dbRow.summary_text).toBe(mockSummaryText);
 

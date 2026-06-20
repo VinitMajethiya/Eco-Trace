@@ -1,26 +1,16 @@
-/**
- * Migration Runner
- * 
- * Replaces the monolithic migrate.js with a versioned, idempotent migration system.
- * 
- * - Maintains a `schema_migrations` table tracking which migrations have been run.
- * - Discovers migration files in ./migrations/ ordered by filename (001_, 002_, ...).
- * - Runs only pending migrations on each startup.
- * - Each migration exports a single `up(db)` function.
- */
 const path = require('path');
 const fs = require('fs');
 const db = require('./database');
 
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
-function runMigrations() {
-  // Ensure the migrations tracker table exists
-  db.exec(`
+async function runMigrations() {
+  // Ensure the migrations tracker table exists in Postgres
+  await db.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
-      run_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL UNIQUE,
+      run_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -36,9 +26,8 @@ function runMigrations() {
   }
 
   // Check which have already been run
-  const ran = new Set(
-    db.prepare('SELECT name FROM schema_migrations').all().map(r => r.name)
-  );
+  const result = await db.query('SELECT name FROM schema_migrations');
+  const ran = new Set(result.rows.map(r => r.name));
 
   let count = 0;
   for (const file of migrationFiles) {
@@ -53,8 +42,8 @@ function runMigrations() {
 
     try {
       console.log(`[migrations] Running ${file}...`);
-      migration.up(db);
-      db.prepare('INSERT INTO schema_migrations (name) VALUES (?)').run(file);
+      await migration.up(db);
+      await db.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
       count++;
       console.log(`[migrations] ✓ ${file}`);
     } catch (err) {
@@ -71,7 +60,13 @@ function runMigrations() {
 }
 
 if (require.main === module) {
-  runMigrations();
+  runMigrations().then(() => {
+    console.log('Migrations complete.');
+    process.exit(0);
+  }).catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
 }
 
 module.exports = runMigrations;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, X } from 'lucide-react';
+import { apiFetch } from '../lib/apiClient';
 
 export default function WeeklySummaryCard() {
   const [summary, setSummary] = useState('');
@@ -12,7 +13,7 @@ export default function WeeklySummaryCard() {
     
     const fetchSummary = async () => {
       try {
-        const response = await fetch('/api/dashboard/weekly-summary');
+        const response = await apiFetch('/api/dashboard/weekly-summary');
         if (!response.ok) throw new Error('Failed to load weekly summary');
         const data = await response.json();
         

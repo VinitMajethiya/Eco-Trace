@@ -80,55 +80,58 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'An unexpected internal server error occurred.' });
 });
 
-// Run database migrations on startup (versioned, idempotent)
-if (process.env.NODE_ENV !== 'test') {
-  const runMigrations = require('./db/migrationRunner');
-  runMigrations();
-}
-
 // Recurring log job: auto-create recurring activities at midnight and on startup
 const db = require('./db/database');
-function processRecurringLogs(dateOverride) {
+async function processRecurringLogs(dateOverride) {
   try {
     const today = dateOverride ? new Date(dateOverride) : new Date();
     const todayStr = today.toISOString().split('T')[0];
     const todayDayNum = today.getDay().toString(); // 0=Sun, 1=Mon...
 
     // Find all recurring activities not yet logged today
-    const recurring = db.prepare(`
-      SELECT a.*, u.id as uid
+    const recurringResult = await db.query(`
+      SELECT a.user_id, a.category, a.sub_type, a.quantity, a.unit, 
+             CAST(a.co2e_kg AS DOUBLE PRECISION) as co2e_kg, a.recurring_days
       FROM activities a
-      JOIN users u ON a.user_id = u.id
       WHERE a.is_recurring = 1
-        AND a.activity_date < ?
-        AND (a.recurring_days IS NULL OR instr(',' || a.recurring_days || ',', ',' || ? || ',') > 0)
-      GROUP BY a.user_id, a.sub_type, a.category
-      HAVING MAX(a.activity_date) < ?
-    `).all(todayStr, todayDayNum, todayStr);
+        AND a.activity_date < $1::date
+        AND (a.recurring_days IS NULL OR position(',' || $2 || ',' in ',' || a.recurring_days || ',') > 0)
+      GROUP BY a.user_id, a.category, a.sub_type, a.quantity, a.unit, a.co2e_kg, a.recurring_days
+      HAVING MAX(a.activity_date) < $3::date
+    `, [todayStr, todayDayNum, todayStr]);
+    const recurring = recurringResult.rows;
 
     if (recurring.length > 0) {
-      const checkAlreadyLogged = db.prepare(
-        'SELECT id FROM activities WHERE user_id = ? AND sub_type = ? AND activity_date = ?'
-      );
-      const insertActivity = db.prepare(`
+      const checkAlreadyLogged = `
+        SELECT id FROM activities WHERE user_id = $1 AND sub_type = $2 AND activity_date = $3::date
+      `;
+      const insertActivity = `
         INSERT INTO activities (user_id, category, sub_type, quantity, unit, co2e_kg, activity_date, is_recurring, recurring_days)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
-      `);
+        VALUES ($1, $2, $3, $4, $5, $6, $7::date, 1, $8)
+      `;
 
-      const runTransaction = db.transaction((rows) => {
-        rows.forEach(r => {
-          const alreadyLogged = checkAlreadyLogged.get(r.user_id, r.sub_type, todayStr);
-          if (!alreadyLogged) {
-            insertActivity.run(r.user_id, r.category, r.sub_type, r.quantity, r.unit, r.co2e_kg, todayStr, r.recurring_days);
+      const client = await db.pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const r of recurring) {
+          const loggedResult = await client.query(checkAlreadyLogged, [r.user_id, r.sub_type, todayStr]);
+          if (loggedResult.rows.length === 0) {
+            await client.query(insertActivity, [
+              r.user_id, r.category, r.sub_type, r.quantity, r.unit, r.co2e_kg, todayStr, r.recurring_days
+            ]);
           }
-        });
-      });
-
-      runTransaction(recurring);
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
     }
   } catch (err) {
     // Gracefully skip if recurring columns not yet migrated
-    if (!err.message.includes('no such column')) {
+    if (!err.message.includes('column') && !err.message.includes('relation')) {
       console.error('Recurring log job error:', err.message);
     }
   }
@@ -137,13 +140,22 @@ function processRecurringLogs(dateOverride) {
 // Run database migrations on startup (versioned, idempotent)
 if (process.env.NODE_ENV !== 'test') {
   const runMigrations = require('./db/migrationRunner');
-  runMigrations();
-
-  // Run once on startup
-  processRecurringLogs();
-
-  // Schedule cron job to run at midnight every day
-  cron.schedule('0 0 * * *', () => processRecurringLogs());
+  runMigrations()
+    .then(() => {
+      console.log('Database migrations completed successfully.');
+      return processRecurringLogs();
+    })
+    .then(() => {
+      console.log('Recurring logs processed on startup.');
+      // Schedule cron job to run at midnight every day
+      cron.schedule('0 0 * * *', () => {
+        processRecurringLogs().catch(err => console.error('Cron recurring log job failed:', err));
+      });
+    })
+    .catch(err => {
+      console.error('Failed to initialize database and run startup migrations:', err);
+      process.exit(1);
+    });
 }
 
 // Attach helper for testing recurring logs

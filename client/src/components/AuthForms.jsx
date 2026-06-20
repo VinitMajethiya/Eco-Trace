@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { apiFetch, API_BASE } from '../lib/apiClient';
 
 export default function AuthForms({ login, register, isRegister, onToggleAuthMode }) {
   const [authName, setAuthName] = useState('');
@@ -9,7 +10,7 @@ export default function AuthForms({ login, register, isRegister, onToggleAuthMod
   const [oauthEnabled, setOauthEnabled] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/config')
+    apiFetch('/api/auth/config')
       .then(res => res.json())
       .then(data => {
         if (data.googleOAuthEnabled) {
@@ -112,7 +113,7 @@ export default function AuthForms({ login, register, isRegister, onToggleAuthMod
           </div>
           <button 
             type="button" 
-            onClick={() => window.location.href = '/api/auth/google?origin=' + encodeURIComponent(window.location.origin)}
+            onClick={() => window.location.href = API_BASE + '/api/auth/google?origin=' + encodeURIComponent(window.location.origin)}
             className="btn-secondary"
             style={{ 
               width: '100%', 
