@@ -137,8 +137,8 @@ async function processRecurringLogs(dateOverride) {
   }
 }
 
-// Run database migrations on startup (versioned, idempotent)
-if (process.env.NODE_ENV !== 'test') {
+// Run database migrations on startup (versioned, idempotent) - bypass on Vercel
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   const runMigrations = require('./db/migrationRunner');
   runMigrations()
     .then(() => {
@@ -161,8 +161,8 @@ if (process.env.NODE_ENV !== 'test') {
 // Attach helper for testing recurring logs
 app.processRecurringLogs = processRecurringLogs;
 
-// Run server
-if (process.env.NODE_ENV !== 'test') {
+// Run server - bypass on Vercel serverless environments
+if (process.env.NODE_ENV !== 'test' && !process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`EcoTrace server running on port ${PORT}`);
   });
