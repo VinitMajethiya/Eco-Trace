@@ -92,11 +92,11 @@ async function autoEvaluateCommitments(userId) {
 }
 
 // In-memory debounce: prevents double-evaluation when both parallel requests fire on page load
-const recentEvals = new Map();
+const recentEvaluationsMap = new Map();
 async function safeEvaluate(userId) {
-  const lastRun = recentEvals.get(userId) || 0;
+  const lastRun = recentEvaluationsMap.get(userId) || 0;
   if (process.env.NODE_ENV !== 'test' && Date.now() - lastRun < 5000) return;
-  recentEvals.set(userId, Date.now());
+  recentEvaluationsMap.set(userId, Date.now());
   await autoEvaluateCommitments(userId);
 }
 

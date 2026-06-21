@@ -48,13 +48,8 @@ describe('Weekly Summary Caching and ISO Week boundaries', () => {
     const sunday = getISOWeekMonday('2026-06-21');
     const nextMonday = getISOWeekMonday('2026-06-22');
 
-    // Format all dates to YYYY-MM-DD
-    const formatDate = (d) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    };
+    // Format all dates to YYYY-MM-DD in UTC
+    const formatDate = (d) => d.toISOString().split('T')[0];
 
     expect(formatDate(monday)).toBe('2026-06-15');
     expect(formatDate(wednesday)).toBe('2026-06-15');
@@ -161,5 +156,24 @@ describe('Weekly Summary Caching and ISO Week boundaries', () => {
     expect(res3.body.weekStartDate).toBe('2026-06-22');
     expect(res3.body.summaryText).toBe(newSummaryText);
     expect(global.fetch).toHaveBeenCalledTimes(1); // 1 call for the new fetch mock instance
+  });
+
+  test('getISOWeekMonday and getWeeklyRanges are timezone-independent (IST vs UTC boundary)', () => {
+    const { getISOWeekMonday, getWeeklyRanges } = weeklySummaryRouter;
+
+    // Timezone boundary case: Monday, June 15, 2026 at 1:00 AM IST (Asia/Kolkata +05:30)
+    // In UTC, this is Sunday, June 14, 2026 at 7:30 PM (2026-06-14T19:30:00.000Z).
+    // In a UTC-standardized system, this timestamp belongs to the week starting Monday, June 8, 2026.
+    // If it were server-timezone-dependent on an IST server, it would belong to the week starting Monday, June 15, 2026.
+    
+    const boundaryDate = new Date('2026-06-14T19:30:00.000Z');
+    
+    const monday = getISOWeekMonday(boundaryDate);
+    const ranges = getWeeklyRanges(boundaryDate);
+    
+    const mondayStr = monday.toISOString().split('T')[0];
+    expect(mondayStr).toBe('2026-06-08');
+    expect(ranges.startCurrent).toBe('2026-06-08');
+    expect(ranges.endCurrent).toBe('2026-06-14');
   });
 });

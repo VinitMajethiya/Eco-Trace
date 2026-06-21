@@ -117,13 +117,53 @@ router.get('/', async (req, res) => {
   }
 });
 
+/**
+ * Helper to update user streak information.
+ * Uses early returns to avoid deeply nested conditionals.
+ */
+async function updateStreak(userId, activityDate) {
+  const userResult = await db.query(
+    'SELECT current_streak, longest_streak, last_log_date FROM users WHERE id = $1',
+    [userId]
+  );
+  const userRow = userResult.rows[0];
+  if (!userRow) {
+    return { current: 0, longest: 0, isNewDay: false };
+  }
+
+  const today = activityDate;
+  const lastLog = userRow.last_log_date;
+
+  if (lastLog === today) {
+    return {
+      current: userRow.current_streak,
+      longest: userRow.longest_streak,
+      isNewDay: false
+    };
+  }
+
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  const newStreak = lastLog === yesterdayStr ? userRow.current_streak + 1 : 1;
+  const newLongest = Math.max(userRow.longest_streak || 0, newStreak);
+
+  await db.query(
+    'UPDATE users SET current_streak = $1, longest_streak = $2, last_log_date = $3 WHERE id = $4',
+    [newStreak, newLongest, today, userId]
+  );
+
+  return { current: newStreak, longest: newLongest, isNewDay: true };
+}
+
 // POST /api/activities — with per-user rate limiter
 router.post('/', activityLimiter, async (req, res) => {
   try {
-    const data = activitySchema.parse(req.body);
+    const activityData = activitySchema.parse(req.body);
 
     // Authoritative calculation of carbon footprint on backend
-    const calc = calculateCO2e(data.category, data.sub_type, data.quantity);
+    const calc = calculateCO2e(activityData.category, activityData.sub_type, activityData.quantity);
 
     const result = await db.query(`
       INSERT INTO activities (user_id, category, sub_type, quantity, unit, co2e_kg, activity_date, is_recurring, recurring_days)
@@ -131,67 +171,36 @@ router.post('/', activityLimiter, async (req, res) => {
       RETURNING id
     `, [
       req.user.id,
-      data.category,
-      data.sub_type,
-      data.quantity,
+      activityData.category,
+      activityData.sub_type,
+      activityData.quantity,
       calc.unit,
       calc.co2e_kg,
-      data.activity_date,
-      data.is_recurring ? 1 : 0,
-      data.recurring_days || null
+      activityData.activity_date,
+      activityData.is_recurring ? 1 : 0,
+      activityData.recurring_days || null
     ]);
-    const lastInsertRowid = result.rows[0].id;
+    const insertedActivityId = result.rows[0].id;
 
     // --- Streak logic (Phase 5.4) ---
     let streakInfo = { current: 0, longest: 0, isNewDay: false };
     try {
-      const userResult = await db.query(
-        'SELECT current_streak, longest_streak, last_log_date FROM users WHERE id = $1',
-        [req.user.id]
-      );
-      const userRow = userResult.rows[0];
-
-      if (userRow) {
-        const today = data.activity_date;
-        const lastLog = userRow.last_log_date;
-
-        if (lastLog === today) {
-          streakInfo = {
-            current: userRow.current_streak,
-            longest: userRow.longest_streak,
-            isNewDay: false
-          };
-        } else {
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-          const newStreak = lastLog === yesterdayStr ? userRow.current_streak + 1 : 1;
-          const newLongest = Math.max(userRow.longest_streak || 0, newStreak);
-
-          await db.query(
-            'UPDATE users SET current_streak = $1, longest_streak = $2, last_log_date = $3 WHERE id = $4',
-            [newStreak, newLongest, today, req.user.id]
-          );
-
-          streakInfo = { current: newStreak, longest: newLongest, isNewDay: true };
-        }
-      }
+      streakInfo = await updateStreak(req.user.id, activityData.activity_date);
     } catch (err) {
       console.warn('Streak update skipped (pre-migration or other error):', err.message);
     }
 
     const newActivity = {
-      id: lastInsertRowid,
+      id: insertedActivityId,
       user_id: req.user.id,
-      category: data.category,
-      sub_type: data.sub_type,
-      quantity: data.quantity,
+      category: activityData.category,
+      sub_type: activityData.sub_type,
+      quantity: activityData.quantity,
       unit: calc.unit,
       co2e_kg: calc.co2e_kg,
-      activity_date: data.activity_date,
-      is_recurring: data.is_recurring ? 1 : 0,
-      recurring_days: data.recurring_days || null,
+      activity_date: activityData.activity_date,
+      is_recurring: activityData.is_recurring ? 1 : 0,
+      recurring_days: activityData.recurring_days || null,
       streak: streakInfo
     };
 

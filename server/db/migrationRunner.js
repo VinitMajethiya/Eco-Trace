@@ -18,7 +18,7 @@ async function runMigrations() {
   let migrationFiles;
   try {
     migrationFiles = fs.readdirSync(MIGRATIONS_DIR)
-      .filter(f => f.endsWith('.js'))
+      .filter(filename => filename.endsWith('.js'))
       .sort();
   } catch (err) {
     console.warn('Migration directory not found — skipping versioned migrations.');
@@ -27,7 +27,7 @@ async function runMigrations() {
 
   // Check which have already been run
   const result = await db.query('SELECT name FROM schema_migrations');
-  const ran = new Set(result.rows.map(r => r.name));
+  const ran = new Set(result.rows.map(row => row.name));
 
   let count = 0;
   for (const file of migrationFiles) {

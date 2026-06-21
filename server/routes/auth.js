@@ -125,34 +125,34 @@ router.get('/me', authenticateToken, async (req, res) => {
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const data = registerSchema.parse(req.body);
+    const registrationData = registerSchema.parse(req.body);
     
     // Check if email already exists
-    const existingResult = await db.query('SELECT id FROM users WHERE email = $1', [data.email]);
+    const existingResult = await db.query('SELECT id FROM users WHERE email = $1', [registrationData.email]);
     if (existingResult.rows[0]) {
       return res.status(400).json({ error: 'Email already registered.' });
     }
 
     const salt = bcrypt.genSaltSync(12);
-    const passwordHash = bcrypt.hashSync(data.password, salt);
+    const passwordHash = bcrypt.hashSync(registrationData.password, salt);
 
     const result = await db.query(`
       INSERT INTO users (name, email, password_hash, household_size, default_commute_mode, default_diet)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id
     `, [
-      data.name,
-      data.email,
+      registrationData.name,
+      registrationData.email,
       passwordHash,
-      data.household_size,
-      data.default_commute_mode || null,
-      data.default_diet || null
+      registrationData.household_size,
+      registrationData.default_commute_mode || null,
+      registrationData.default_diet || null
     ]);
 
     const userId = result.rows[0].id;
     
     // Generate JWT
-    const token = jwt.sign({ id: userId, email: data.email, name: data.name }, JWT_SECRET, {
+    const token = jwt.sign({ id: userId, email: registrationData.email, name: registrationData.name }, JWT_SECRET, {
       expiresIn: '7d'
     });
 
@@ -163,11 +163,11 @@ router.post('/register', async (req, res) => {
       message: 'Account created successfully.',
       user: {
         id: userId,
-        name: data.name,
-        email: data.email,
-        household_size: data.household_size,
-        default_commute_mode: data.default_commute_mode,
-        default_diet: data.default_diet
+        name: registrationData.name,
+        email: registrationData.email,
+        household_size: registrationData.household_size,
+        default_commute_mode: registrationData.default_commute_mode,
+        default_diet: registrationData.default_diet
       },
       token
     });
@@ -184,15 +184,15 @@ router.post('/register', async (req, res) => {
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
   try {
-    const data = loginSchema.parse(req.body);
+    const loginData = loginSchema.parse(req.body);
 
-    const userResult = await db.query('SELECT id, name, email, password_hash, household_size, default_commute_mode, default_diet FROM users WHERE email = $1', [data.email]);
+    const userResult = await db.query('SELECT id, name, email, password_hash, household_size, default_commute_mode, default_diet FROM users WHERE email = $1', [loginData.email]);
     const user = userResult.rows[0];
     if (!user || user.password_hash === null) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const passwordMatch = bcrypt.compareSync(data.password, user.password_hash);
+    const passwordMatch = bcrypt.compareSync(loginData.password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
@@ -241,13 +241,13 @@ router.post('/onboarding', authenticateToken, async (req, res) => {
       city: z.string().optional()
     });
 
-    const data = onboardingSchema.parse(req.body);
+    const onboardingData = onboardingSchema.parse(req.body);
 
     await db.query(`
       UPDATE users 
       SET default_commute_mode = $1, default_diet = $2, household_size = $3, city = COALESCE($4, city)
       WHERE id = $5
-    `, [data.default_commute_mode, data.default_diet, data.household_size, data.city || null, req.user.id]);
+    `, [onboardingData.default_commute_mode, onboardingData.default_diet, onboardingData.household_size, onboardingData.city || null, req.user.id]);
 
     // Soft invalidation of recommendations upon onboarding preferences change
     await db.query('UPDATE recommendations SET is_stale = 1 WHERE user_id = $1', [req.user.id]);

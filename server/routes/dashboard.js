@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
+const { getISOWeekMonday } = require('../utils/date');
 
 const router = express.Router();
 
@@ -127,11 +128,7 @@ router.get('/summary', async (req, res) => {
 
     // 4. Optimized trend: 8-week window
     const today = new Date();
-    const day = today.getDay();
-    const diffToMonday = day === 0 ? -6 : 1 - day;
-    const currentMonday = new Date(today);
-    currentMonday.setDate(today.getDate() + diffToMonday);
-    currentMonday.setHours(0, 0, 0, 0);
+    const currentMonday = getISOWeekMonday(today);
 
     // Start = 8 weeks before current Monday
     const trendStart = new Date(currentMonday);

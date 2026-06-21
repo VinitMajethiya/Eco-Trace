@@ -26,13 +26,13 @@ async function getPeriodStats(userId, startDate, endDate) {
   const categoryTotals = {};
   const subTypeTotals = {};
 
-  activities.forEach(a => {
-    categoryTotals[a.category] = (categoryTotals[a.category] || 0) + a.co2e_kg;
+  activities.forEach(activity => {
+    categoryTotals[activity.category] = (categoryTotals[activity.category] || 0) + activity.co2e_kg;
     
-    if (!subTypeTotals[a.category]) {
-      subTypeTotals[a.category] = {};
+    if (!subTypeTotals[activity.category]) {
+      subTypeTotals[activity.category] = {};
     }
-    subTypeTotals[a.category][a.sub_type] = (subTypeTotals[a.category][a.sub_type] || 0) + a.co2e_kg;
+    subTypeTotals[activity.category][activity.sub_type] = (subTypeTotals[activity.category][activity.sub_type] || 0) + activity.co2e_kg;
   });
 
   const totalCO2e = Object.values(categoryTotals).reduce((sum, v) => sum + v, 0);
@@ -78,8 +78,8 @@ function generateWhatIfOptions(topCategory, topSubType, userActivities) {
   const options = [];
   
   // Filter activities for the top category and subtype
-  const subTypeLogs = userActivities.filter(a => a.category === topCategory && a.sub_type === topSubType);
-  const totalQty = subTypeLogs.reduce((sum, a) => sum + a.quantity, 0);
+  const subTypeLogs = userActivities.filter(activity => activity.category === topCategory && activity.sub_type === topSubType);
+  const totalQty = subTypeLogs.reduce((sum, activity) => sum + activity.quantity, 0);
   const logCount = subTypeLogs.length;
   
   // Default to sensible averages if logs are sparse
@@ -93,22 +93,22 @@ function generateWhatIfOptions(topCategory, topSubType, userActivities) {
       const transitType = factors.transport.train.factor < factors.transport.bus.factor ? 'train' : 'bus';
       const transitFactor = factors.transport[transitType].factor;
       
-      const swapCount1 = Math.max(1, Math.min(weeklyFreq, 2));
-      const saving1 = swapCount1 * 4.33 * avgQty * (origFactor - transitFactor);
+      const publicTransitSwapCount = Math.max(1, Math.min(weeklyFreq, 2));
+      const publicTransitMonthlySaving = publicTransitSwapCount * 4.33 * avgQty * (origFactor - transitFactor);
       
       options.push({
         id: 'transport_swap_transit',
-        description: `swap ${swapCount1} of ${weeklyFreq} weekly ${topSubType} commutes to ${transitType}`,
-        estimatedSavingKgPerMonth: parseFloat(saving1.toFixed(1)),
+        description: `swap ${publicTransitSwapCount} of ${weeklyFreq} weekly ${topSubType} commutes to ${transitType}`,
+        estimatedSavingKgPerMonth: parseFloat(publicTransitMonthlySaving.toFixed(1)),
         targetCategory: 'transport'
       });
 
-      const swapCount2 = 1;
-      const saving2 = swapCount2 * 4.33 * avgQty * origFactor;
+      const bicycleWalkSwapCount = 1;
+      const bicycleWalkMonthlySaving = bicycleWalkSwapCount * 4.33 * avgQty * origFactor;
       options.push({
         id: 'transport_swap_bike',
-        description: `swap ${swapCount2} of ${weeklyFreq} weekly ${topSubType} commutes to bicycle_walk`,
-        estimatedSavingKgPerMonth: parseFloat(saving2.toFixed(1)),
+        description: `swap ${bicycleWalkSwapCount} of ${weeklyFreq} weekly ${topSubType} commutes to bicycle_walk`,
+        estimatedSavingKgPerMonth: parseFloat(bicycleWalkMonthlySaving.toFixed(1)),
         targetCategory: 'transport'
       });
     } else {
@@ -142,53 +142,53 @@ function generateWhatIfOptions(topCategory, topSubType, userActivities) {
     });
   } else if (topCategory === 'food') {
     if (topSubType === 'beef_meal') {
-      const factorDiff = factors.food.beef_meal.factor - factors.food.chicken_meal.factor;
-      const swapCount = Math.max(1, Math.min(weeklyFreq, 2));
-      const saving = swapCount * 4.33 * factorDiff;
+      const beefToChickenFactorDiff = factors.food.beef_meal.factor - factors.food.chicken_meal.factor;
+      const beefToChickenSwapCount = Math.max(1, Math.min(weeklyFreq, 2));
+      const beefToChickenMonthlySaving = beefToChickenSwapCount * 4.33 * beefToChickenFactorDiff;
       options.push({
         id: 'food_beef_to_chicken',
-        description: `swap ${swapCount} weekly beef_meal(s) to chicken_meal`,
-        estimatedSavingKgPerMonth: parseFloat(saving.toFixed(1)),
+        description: `swap ${beefToChickenSwapCount} weekly beef_meal(s) to chicken_meal`,
+        estimatedSavingKgPerMonth: parseFloat(beefToChickenMonthlySaving.toFixed(1)),
         targetCategory: 'food'
       });
 
-      const factorDiff2 = factors.food.beef_meal.factor - factors.food.vegetarian_meal.factor;
-      const swapCount2 = Math.max(1, Math.min(weeklyFreq, 3));
-      const saving2 = swapCount2 * 4.33 * factorDiff2;
+      const beefToVegFactorDiff = factors.food.beef_meal.factor - factors.food.vegetarian_meal.factor;
+      const beefToVegSwapCount = Math.max(1, Math.min(weeklyFreq, 3));
+      const beefToVegMonthlySaving = beefToVegSwapCount * 4.33 * beefToVegFactorDiff;
       options.push({
         id: 'food_beef_to_vegetarian',
-        description: `swap ${swapCount2} weekly beef_meal(s) to vegetarian_meal`,
-        estimatedSavingKgPerMonth: parseFloat(saving2.toFixed(1)),
+        description: `swap ${beefToVegSwapCount} weekly beef_meal(s) to vegetarian_meal`,
+        estimatedSavingKgPerMonth: parseFloat(beefToVegMonthlySaving.toFixed(1)),
         targetCategory: 'food'
       });
     } else if (topSubType === 'chicken_meal') {
-      const factorDiff = factors.food.chicken_meal.factor - factors.food.vegetarian_meal.factor;
-      const swapCount = Math.max(1, Math.min(weeklyFreq, 2));
-      const saving = swapCount * 4.33 * factorDiff;
+      const chickenToVegFactorDiff = factors.food.chicken_meal.factor - factors.food.vegetarian_meal.factor;
+      const chickenToVegSwapCount = Math.max(1, Math.min(weeklyFreq, 2));
+      const chickenToVegMonthlySaving = chickenToVegSwapCount * 4.33 * chickenToVegFactorDiff;
       options.push({
         id: 'food_chicken_to_vegetarian',
-        description: `swap ${swapCount} weekly chicken_meal(s) to vegetarian_meal`,
-        estimatedSavingKgPerMonth: parseFloat(saving.toFixed(1)),
+        description: `swap ${chickenToVegSwapCount} weekly chicken_meal(s) to vegetarian_meal`,
+        estimatedSavingKgPerMonth: parseFloat(chickenToVegMonthlySaving.toFixed(1)),
         targetCategory: 'food'
       });
 
-      const factorDiff2 = factors.food.chicken_meal.factor - factors.food.vegan_meal.factor;
-      const swapCount2 = Math.max(1, Math.min(weeklyFreq, 3));
-      const saving2 = swapCount2 * 4.33 * factorDiff2;
+      const chickenToVeganFactorDiff = factors.food.chicken_meal.factor - factors.food.vegan_meal.factor;
+      const chickenToVeganSwapCount = Math.max(1, Math.min(weeklyFreq, 3));
+      const chickenToVeganMonthlySaving = chickenToVeganSwapCount * 4.33 * chickenToVeganFactorDiff;
       options.push({
         id: 'food_chicken_to_vegan',
-        description: `swap ${swapCount2} weekly chicken_meal(s) to vegan_meal`,
-        estimatedSavingKgPerMonth: parseFloat(saving2.toFixed(1)),
+        description: `swap ${chickenToVeganSwapCount} weekly chicken_meal(s) to vegan_meal`,
+        estimatedSavingKgPerMonth: parseFloat(chickenToVeganMonthlySaving.toFixed(1)),
         targetCategory: 'food'
       });
     } else if (topSubType === 'vegetarian_meal') {
-      const factorDiff = factors.food.vegetarian_meal.factor - factors.food.vegan_meal.factor;
-      const swapCount = Math.max(1, Math.min(weeklyFreq, 3));
-      const saving = swapCount * 4.33 * factorDiff;
+      const vegToVeganFactorDiff = factors.food.vegetarian_meal.factor - factors.food.vegan_meal.factor;
+      const vegToVeganSwapCount = Math.max(1, Math.min(weeklyFreq, 3));
+      const vegToVeganMonthlySaving = vegToVeganSwapCount * 4.33 * vegToVeganFactorDiff;
       options.push({
         id: 'food_vegetarian_to_vegan',
-        description: `swap ${swapCount} weekly vegetarian_meal(s) to vegan_meal`,
-        estimatedSavingKgPerMonth: parseFloat(saving.toFixed(1)),
+        description: `swap ${vegToVeganSwapCount} weekly vegetarian_meal(s) to vegan_meal`,
+        estimatedSavingKgPerMonth: parseFloat(vegToVeganMonthlySaving.toFixed(1)),
         targetCategory: 'food'
       });
     } else {
@@ -297,11 +297,11 @@ function generateFallbackRecommendation(statsContext) {
 
   const summary = `${displayCategory} makes up ${topCategorySharePct}% of your footprint this month, mostly from ${displaySubType}. Here's a realistic next step:`;
 
-  const actions = whatIfOptions.map((opt, index) => ({
+  const actions = whatIfOptions.map((option, index) => ({
     rank: index + 1,
-    action_text: `Try: ${opt.description}`,
-    estimated_saving_kg: opt.estimatedSavingKgPerMonth,
-    target_category: opt.targetCategory
+    action_text: `Try: ${option.description}`,
+    estimated_saving_kg: option.estimatedSavingKgPerMonth,
+    target_category: option.targetCategory
   }));
 
   return {

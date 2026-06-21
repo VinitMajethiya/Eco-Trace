@@ -7,41 +7,7 @@ const router = express.Router();
 
 router.use(authenticateToken);
 
-function getISOWeekMonday(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diffToMonday);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getWeeklyRanges(todayDate = new Date()) {
-  const currentMonday = getISOWeekMonday(todayDate);
-
-  const prevMonday = new Date(currentMonday);
-  prevMonday.setDate(currentMonday.getDate() - 7);
-
-  const prevSunday = new Date(currentMonday);
-  prevSunday.setDate(currentMonday.getDate() - 1);
-
-  const endCurrentDate = new Date(currentMonday);
-  endCurrentDate.setDate(currentMonday.getDate() + 6);
-
-  const formatDate = (d) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const startCurrent = formatDate(currentMonday);
-  const endCurrent = formatDate(endCurrentDate);
-  const startPrevious = formatDate(prevMonday);
-  const endPrevious = formatDate(prevSunday);
-
-  return { startCurrent, endCurrent, startPrevious, endPrevious };
-}
+const { getISOWeekMonday, getWeeklyRanges } = require('../utils/date');
 
 // GET /api/dashboard/weekly-summary
 router.get('/', async (req, res) => {
