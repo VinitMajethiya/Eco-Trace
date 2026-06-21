@@ -21,7 +21,8 @@ const pool = new Pool({
   connectionString,
   max: 10, // Sane limit for Render free tier connection counts
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
+  ssl: process.env.NODE_ENV === 'production' || connectionString.includes('neon.tech') ? { rejectUnauthorized: false } : false
 });
 
 module.exports = {
