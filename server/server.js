@@ -88,47 +88,23 @@ async function processRecurringLogs(dateOverride) {
     const todayStr = today.toISOString().split('T')[0];
     const todayDayNum = today.getDay().toString(); // 0=Sun, 1=Mon...
 
-    // Find all recurring activities not yet logged today
-    const recurringResult = await db.query(`
-      SELECT a.user_id, a.category, a.sub_type, a.quantity, a.unit, 
-             CAST(a.co2e_kg AS DOUBLE PRECISION) as co2e_kg, a.recurring_days
+    // Perform bulk check and insert in a single SQL statement to avoid N+1 query loop
+    await db.query(`
+      INSERT INTO activities (user_id, category, sub_type, quantity, unit, co2e_kg, activity_date, is_recurring, recurring_days)
+      SELECT a.user_id, a.category, a.sub_type, a.quantity, a.unit, a.co2e_kg, $1::date, 1, a.recurring_days
       FROM activities a
       WHERE a.is_recurring = 1
-        AND a.activity_date < $1::date
-        AND (a.recurring_days IS NULL OR position(',' || $2 || ',' in ',' || a.recurring_days || ',') > 0)
+        AND a.activity_date < $2::date
+        AND (a.recurring_days IS NULL OR position(',' || $3 || ',' in ',' || a.recurring_days || ',') > 0)
+        AND NOT EXISTS (
+          SELECT 1 FROM activities today_act
+          WHERE today_act.user_id = a.user_id
+            AND today_act.sub_type = a.sub_type
+            AND today_act.activity_date = $4::date
+        )
       GROUP BY a.user_id, a.category, a.sub_type, a.quantity, a.unit, a.co2e_kg, a.recurring_days
-      HAVING MAX(a.activity_date) < $3::date
-    `, [todayStr, todayDayNum, todayStr]);
-    const recurring = recurringResult.rows;
-
-    if (recurring.length > 0) {
-      const checkAlreadyLogged = `
-        SELECT id FROM activities WHERE user_id = $1 AND sub_type = $2 AND activity_date = $3::date
-      `;
-      const insertActivity = `
-        INSERT INTO activities (user_id, category, sub_type, quantity, unit, co2e_kg, activity_date, is_recurring, recurring_days)
-        VALUES ($1, $2, $3, $4, $5, $6, $7::date, 1, $8)
-      `;
-
-      const client = await db.pool.connect();
-      try {
-        await client.query('BEGIN');
-        for (const r of recurring) {
-          const loggedResult = await client.query(checkAlreadyLogged, [r.user_id, r.sub_type, todayStr]);
-          if (loggedResult.rows.length === 0) {
-            await client.query(insertActivity, [
-              r.user_id, r.category, r.sub_type, r.quantity, r.unit, r.co2e_kg, todayStr, r.recurring_days
-            ]);
-          }
-        }
-        await client.query('COMMIT');
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
-      }
-    }
+      HAVING MAX(a.activity_date) < $5::date
+    `, [todayStr, todayStr, todayDayNum, todayStr, todayStr]);
   } catch (err) {
     // Gracefully skip if recurring columns not yet migrated
     if (!err.message.includes('column') && !err.message.includes('relation')) {

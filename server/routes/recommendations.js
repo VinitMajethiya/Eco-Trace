@@ -237,36 +237,36 @@ router.get('/commitments', async (req, res) => {
     const userId = req.user.id;
     await safeEvaluate(userId);
 
-    // Get active and past commitments
-    const commitmentsResult = await db.query(`
-      SELECT c.*, ai.action_text, 
-             CAST(ai.estimated_saving_kg AS DOUBLE PRECISION) as estimated_saving_kg, 
-             ai.target_category
-      FROM commitments c
-      JOIN action_items ai ON c.action_item_id = ai.id
-      WHERE c.user_id = $1
-      ORDER BY c.status = 'active' DESC, c.end_date DESC
-    `, [userId]);
-    const commitments = commitmentsResult.rows;
-
-    // For active commitments, compute progress (emissions logged since start) in a single batch query
     const todayStr = getRelativeDateStr(0);
 
-    const activeStatsResult = await db.query(`
-      SELECT 
-        c.id, 
-        CAST(COALESCE(SUM(a.co2e_kg), 0) AS DOUBLE PRECISION) as actual_emissions, 
-        COUNT(a.id) as logs_count
-      FROM commitments c
-      JOIN action_items ai ON c.action_item_id = ai.id
-      LEFT JOIN activities a ON c.user_id = a.user_id 
-        AND ai.target_category = a.category 
-        AND a.activity_date >= c.start_date 
-        AND a.activity_date <= c.end_date
-        AND a.activity_date <= $1::date
-      WHERE c.user_id = $2 AND c.status = 'active'
-      GROUP BY c.id
-    `, [todayStr, userId]);
+    // Parallelize active and past commitments fetch along with progress calculation
+    const [commitmentsResult, activeStatsResult] = await Promise.all([
+      db.query(`
+        SELECT c.*, ai.action_text, 
+               CAST(ai.estimated_saving_kg AS DOUBLE PRECISION) as estimated_saving_kg, 
+               ai.target_category
+        FROM commitments c
+        JOIN action_items ai ON c.action_item_id = ai.id
+        WHERE c.user_id = $1
+        ORDER BY c.status = 'active' DESC, c.end_date DESC
+      `, [userId]),
+      db.query(`
+        SELECT 
+          c.id, 
+          CAST(COALESCE(SUM(a.co2e_kg), 0) AS DOUBLE PRECISION) as actual_emissions, 
+          COUNT(a.id) as logs_count
+        FROM commitments c
+        JOIN action_items ai ON c.action_item_id = ai.id
+        LEFT JOIN activities a ON c.user_id = a.user_id 
+          AND ai.target_category = a.category 
+          AND a.activity_date >= c.start_date 
+          AND a.activity_date <= c.end_date
+          AND a.activity_date <= $1::date
+        WHERE c.user_id = $2 AND c.status = 'active'
+        GROUP BY c.id
+      `, [todayStr, userId])
+    ]);
+    const commitments = commitmentsResult.rows;
     const activeStats = activeStatsResult.rows;
 
     const statsMap = new Map(activeStats.map(row => [row.id, row]));

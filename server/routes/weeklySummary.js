@@ -65,20 +65,26 @@ router.get('/', async (req, res) => {
       });
     }
 
-    // 2. Fetch user name
-    const userResult = await db.query('SELECT name FROM users WHERE id = $1', [req.user.id]);
+    // Parallelize independent database queries to optimize performance
+    const [userResult, currentActivitiesResult, prevSumResult] = await Promise.all([
+      db.query('SELECT name FROM users WHERE id = $1', [req.user.id]),
+      db.query(`
+        SELECT category, CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
+        FROM activities
+        WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
+        GROUP BY category
+      `, [req.user.id, startCurrent, endCurrent]),
+      db.query(`
+        SELECT CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
+        FROM activities
+        WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
+      `, [req.user.id, startPrevious, endPrevious])
+    ]);
+
     const userRow = userResult.rows[0];
     const userName = userRow ? userRow.name : 'EcoTracer';
 
-    // 3. Aggregate current week emissions
-    const currentActivitiesResult = await db.query(`
-      SELECT category, CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
-      FROM activities
-      WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
-      GROUP BY category
-    `, [req.user.id, startCurrent, endCurrent]);
     const currentActivities = currentActivitiesResult.rows;
-
     let currentTotal = 0;
     const categoryBreakdown = { transport: 0, energy: 0, food: 0, consumption: 0 };
     currentActivities.forEach(act => {
@@ -86,14 +92,7 @@ router.get('/', async (req, res) => {
       currentTotal += act.total;
     });
 
-    // 4. Aggregate previous week emissions
-    const prevSumResult = await db.query(`
-      SELECT CAST(COALESCE(SUM(co2e_kg), 0) AS DOUBLE PRECISION) as total
-      FROM activities
-      WHERE user_id = $1 AND activity_date BETWEEN $2 AND $3
-    `, [req.user.id, startPrevious, endPrevious]);
     const prevSumRow = prevSumResult.rows[0];
-    
     const prevTotal = prevSumRow ? prevSumRow.total : 0;
 
     // Calculate percentage change
