@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://eco-trace-f3lo.vercel.app/api/:path*"
+    },
+    {
       "source": "/((?!assets/|favicon.ico|index.html|vite.svg).*)$",
       "destination": "/index.html"
     }
